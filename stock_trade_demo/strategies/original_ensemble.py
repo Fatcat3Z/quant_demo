@@ -133,13 +133,13 @@ _TIMING_SIGNAL_CACHE = {}
 class OriginalEnsembleStrategy(OriginalStrategy):
     strategy_id = 'original_ensemble'
     display_name = '多窗口投票版原策略'
-    strategy_description = '近3年/近5年/全量三个原版子策略先独立拟合，再按 0.5/0.3/0.2 加权投票，近期窗口权重更高。'
+    strategy_description = '近3年/近5年/全量三个原版子策略先独立拟合，再按 0.5/0.3/0.2 加权投票；当创业板与科创50双信号同时转强时，切到成长票短持有模式。'
 
     def __init__(self, weight_3y=0.5, weight_5y=0.3, weight_full=0.2,
                  vote_top_k=12, profile_end_date='2026-03-31',
                  board_tilt_strength=0.4, board_recent_weight=0.65,
                  board_short_window=20, board_long_window=60,
-                 growth_timing_mode='off', growth_hold_days=4, growth_top_n=2,
+                 growth_timing_mode='both_signals', growth_hold_days=4, growth_top_n=2,
                  growth_board_scope='growth', **kwargs):
         super().__init__(**kwargs)
         self.weight_3y = weight_3y

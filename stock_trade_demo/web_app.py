@@ -966,7 +966,16 @@ def timing_page():
 # 各策略默认参数值（用于缓存命中判断，值对应前端 slider 默认值）
 _CACHE_DEFAULTS = {
     'original': {'val_pct_cutoff': 0.68, 'bias_pct': 0.52, 'vol_pct': 0.78},
-    'original_ensemble': {'weight_3y': 0.5, 'weight_5y': 0.3, 'weight_full': 0.2, 'vote_top_k': 12, 'board_tilt_strength': 0.4, 'growth_hold_days': 4, 'growth_top_n': 2},
+    'original_ensemble': {
+        'weight_3y': 0.5,
+        'weight_5y': 0.3,
+        'weight_full': 0.2,
+        'vote_top_k': 12,
+        'board_tilt_strength': 0.4,
+        'growth_timing_mode': 'both_signals',
+        'growth_hold_days': 4,
+        'growth_top_n': 2,
+    },
     'chan_enhanced': {'val_pct_cutoff': 0.68, 'bias_pct': 0.52, 'vol_pct': 0.78, 'chan_tilt': 0.03},
     'chan_only': {'chan_weight': 0.70},
     'method_a': {'val_pct_cutoff': 0.68, 'bias_pct': 0.52, 'vol_pct': 0.78, 'chan_tilt': 0.05},
@@ -996,8 +1005,20 @@ def api_backtest():
     use_cache = strategy in BACKTEST_CACHE
     if use_cache and strategy in _CACHE_DEFAULTS:
         for key, default_val in _CACHE_DEFAULTS[strategy].items():
-            val = request.args.get(key, type=float)
-            if val is not None and val != default_val:
+            raw_val = request.args.get(key)
+            if raw_val is None:
+                continue
+            try:
+                if isinstance(default_val, str):
+                    val = raw_val
+                elif isinstance(default_val, int) and not isinstance(default_val, bool):
+                    val = int(raw_val)
+                else:
+                    val = float(raw_val)
+            except (TypeError, ValueError):
+                use_cache = False
+                break
+            if val != default_val:
                 use_cache = False
                 break
 
@@ -1219,12 +1240,18 @@ def api_timing_backtest():
 def api_strategy_list():
     strategy_id = get_focused_strategy_id()
     strategy = build_strategy(strategy_id)
+    cumulative_return = None
+    cached = BACKTEST_CACHE.get(strategy_id)
+    if cached is not None:
+        result, _ = cached
+        if len(result) > 0:
+            cumulative_return = f"{float(result['累积净值'].iloc[-1]):.2f}x"
     return jsonify([
         {
             'id': strategy_id,
             'name': strategy.get_display_name(),
             'description': strategy.get_strategy_description(),
-            'cumulative_return': '894.67x',
+            'cumulative_return': cumulative_return,
             'best': True,
             'focus_only': True,
         }
