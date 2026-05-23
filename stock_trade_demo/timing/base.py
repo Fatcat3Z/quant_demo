@@ -70,8 +70,8 @@ class BaseTimingStrategy:
             {'key': 'trim_threshold', 'label': '减仓阈值', 'type': 'timing', 'min': 0.1, 'max': 0.6, 'step': 0.05, 'default': self.trim_threshold, 'unit': '', 'description': '强度回落到该阈值下方时，执行逐步减仓。'},
             {'key': 'exit_threshold', 'label': '清仓阈值', 'type': 'timing', 'min': 0.05, 'max': 0.4, 'step': 0.05, 'default': self.exit_threshold, 'unit': '', 'description': '强度跌破该阈值并确认后，执行清仓。'},
             {'key': 'profit_lock_enabled', 'label': '盈利锁定', 'type': 'timing_select', 'options': [
-                {'value': False, 'label': 'off'},
-                {'value': True, 'label': 'on'},
+                {'value': False, 'label': '关闭'},
+                {'value': True, 'label': '开启'},
             ], 'default': self.profit_lock_enabled, 'description': '对 staged 仓位启用共享阶梯止盈/回撤锁盈覆盖层。'},
             {'key': 'profit_lock_drawdown', 'label': '锁盈回撤阈值', 'type': 'timing', 'min': 0.01, 'max': 0.1, 'step': 0.01, 'default': self.profit_lock_drawdown, 'unit': '', 'description': '持仓浮盈达到目标后，若从峰值回撤超过该比例，则按阶梯锁定后的仓位回落。'},
             {'key': 'profit_lock_level_1', 'label': '锁盈一级阈值', 'type': 'timing', 'min': 0.04, 'max': 0.2, 'step': 0.01, 'default': self.profit_lock_level_1, 'unit': '', 'description': '单笔持仓浮盈达到该比例后，至少锁定到 75% 仓位。'},
@@ -82,8 +82,8 @@ class BaseTimingStrategy:
             {'key': 'cash_interest_rate', 'label': '现金计息', 'type': 'timing', 'min': 0.0, 'max': 0.05, 'step': 0.0025, 'default': self.cash_interest_rate, 'unit': '/年', 'description': '空仓 / 半仓现金按该年化利率（÷252 计入每日）累计利息。'},
             {'key': 'commission_rate', 'label': '佣金费率', 'type': 'timing', 'min': 0.0, 'max': 0.001, 'step': 0.00005, 'default': self.commission_rate, 'unit': '', 'description': 'ETF 佣金费率（双边），按成交金额计提，最低 commission_min 元/笔。'},
             {'key': 'commission_min', 'label': '佣金最低', 'type': 'timing', 'min': 0.0, 'max': 20.0, 'step': 1.0, 'default': self.commission_min, 'unit': '元', 'description': '单笔最低佣金，不足按最低值收取。'},
-            {'key': 'stamp_tax_rate', 'label': '印花税', 'type': 'timing', 'min': 0.0, 'max': 0.002, 'step': 0.0001, 'default': self.stamp_tax_rate, 'unit': '', 'description': 'ETF 默认免征印花税（0），股票卖出方向才适用。'},
-            {'key': 'transfer_fee_rate', 'label': '过户费', 'type': 'timing', 'min': 0.0, 'max': 0.0001, 'step': 0.000005, 'default': self.transfer_fee_rate, 'unit': '', 'description': '仅沪市 ETF 收取过户费（双边）。'},
+            {'key': 'stamp_tax_rate', 'label': '印花税', 'type': 'timing', 'min': 0.0, 'max': 0.002, 'step': 0.0001, 'default': self.stamp_tax_rate, 'unit': '', 'description': 'ETF 双边免征印花税（保留参数仅供股票场景）。'},
+            {'key': 'transfer_fee_rate', 'label': '过户费', 'type': 'timing', 'min': 0.0, 'max': 0.0001, 'step': 0.000005, 'default': self.transfer_fee_rate, 'unit': '', 'description': '沪深两市 ETF 现行均收过户费 0.001‰（双边），2025 年起深交所统一对深市 ETF 收取。'},
             {'key': 'limit_max_delay_days', 'label': '涨跌停顺延天数', 'type': 'timing', 'min': 0, 'max': 10, 'step': 1, 'default': self.limit_max_delay_days, 'unit': '日', 'description': '买卖单遇涨跌停封板未成交时，最多顺延的交易日数；超过则丢弃。0 表示不顺延。'},
         ]
 

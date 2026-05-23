@@ -136,7 +136,7 @@ class OriginalEnsembleStrategy(OriginalStrategy):
     strategy_description = '近3年/近5年/全量三个原版子策略先独立拟合，再按 0.5/0.3/0.2 加权投票；E3门控：只让高 vote_total_score（≥0.7分位）候选吃到板块倾斜，避免稀释低票股票的小市值主效应。成长短持有 overlay 保留为可选实验开关，默认关闭。'
 
     def __init__(self, weight_3y=0.5, weight_5y=0.3, weight_full=0.2,
-                 vote_top_k=12, profile_end_date='2026-03-31',
+                 vote_top_k=12, profile_end_date=None,
                  board_tilt_strength=0.4, board_recent_weight=0.65,
                  board_short_window=20, board_long_window=60,
                  board_tilt_gate_pct=0.7,
@@ -634,7 +634,10 @@ class OriginalEnsembleStrategy(OriginalStrategy):
         if self.profile_end_date:
             target = pd.to_datetime(self.profile_end_date)
             return min(target, max_date)
-        return max_date
+        # 训练 cutoff 由 web_app.TRAINING_CUTOFF 单一来源约束（默认 2025-11-30），
+        # 之后所有 2025-12-01 以后的数据都是 holdout，不允许进入参数选择。
+        from web_app import TRAINING_CUTOFF
+        return min(pd.to_datetime(TRAINING_CUTOFF), max_date)
 
     def _profile_cache_key(self, df, profile_end_date):
         min_date = pd.to_datetime(df['交易日期']).min().strftime('%Y-%m-%d')

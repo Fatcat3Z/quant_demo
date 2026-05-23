@@ -308,3 +308,449 @@ else:
    1. 回复：公用一套真实规则层
 5. **过拟合 P1 项**：是否本轮一起做实验，还是 P0 修复落地后再开新工单？
    1. P0修复落地后再开新工单
+
+---
+
+## 九、前端文案与金融语义全量 review（首轮原始结论 · 未经 double-check）
+
+> 上下文：用户要求"再详细 review 一下前端页面的所有内容，是否存在上述类似的问题"。
+> 采集了 22 张截图 + DOM 文本 dump（位于 `/tmp/quant_verify/review/`），覆盖 `/`、`/timing`、`/us_timing` 三个页面的默认态 / 区间切换 / 交易明细 modal。
+> **以下结论为首轮直觉 review，含一条已被用户指出错误的判断（#3），保留作为审计记录。准确版本见第十章。**
+
+### 🔴 P0（首轮判断）
+
+1. 首页"近 3 年 / 近 5 年 / 全量"子策略卡仍写"训练区间"，且 2023-03-31 → 2026-03-31 可能与"近端验证 2025-11-28 → 2026-05-15"存在 look-ahead 重叠。
+2. "盈利锁定 / 仓位模式" toggle 在 5 张 ETF 卡里直接渲染原始 `false` / `staged` 字面值。
+3. ⚠️ **首轮误判（已撤回）**：判定纳指/标普 ETF 代码写反。实际后端 `index_data.py:96-110` 与前端 `us_timing.html:175` 都是 159941=纳指、513500=标普，完全一致。
+4. 纳指卡 warm-up 起点 2015-07-13 显得过长（10 年），与 CSI1000 的 2023-12-01 风格不一致。
+5. 首页"近端验证 7 月"窗口算"月度胜率 42.9%"等统计指标，n=7 样本过小却以同等大小展示。
+6. "上行捕获 68.2% / 下行捕获 -47.9%" 缺 tooltip，下行负值非量化用户易误读。
+7. 印花税"股票卖出方向才适用" / 过户费"仅沪市" 文案可能与 2025 现行规则不符。
+
+### 🟡 P1（首轮判断）
+
+8. "近一月收益 0.5%" 只有 1 位小数，与其它字段两位小数不一致。
+9. 纳指卡"杠杆上限 1.4 倍 / 前端展示截断至 100%" 文字矛盾。
+10. timing 页费率写 0.0001 / 0.00001 裸数字，首页写"万 1.0 / 千 1.0"，风格混用。
+11. "评分 4.06" 无量纲说明。
+12. CSI1000 卡空仓时字段分组不自然。
+13. 标普卡 12 年年化 3.31% 实际跑输基准，前端未点出。
+
+### 🟢 P2（首轮判断）
+
+14. "对照基准" 缺金融含义说明。
+15. "成长短持有天数 / 保留只数" 标注"默认关闭"但视觉与生效参数同级。
+16. 5 张策略原理卡显示 LaTeX 源码 `\land \lor \le` 而非 Unicode/MathJax。
+17. 首页顶部"总收益率 61214.1%" 未在同位置标注 18 年累计窗口。
+18. 货币单位（元 / RMB / USD）字段未标注。
+19. 美股页副标题"与 A 股市场独立运行"但实际全部是 A 股上市跨境 ETF。
+20. 跨境 ETF（159941 / 513500）"涨跌停顺延 5 日"参数虽在 backend `limit_pct=None` 时不会触发，但前端仍展示参数，语义无效。
+
+
+---
+
+## 十、前端文案与金融语义 review（double-check 后准确版）
+
+> 方法：对第九章每一条做源码独立核实。每条加 **[CONFIRMED] / [REFUTED] / [REVISED] / [UPGRADED]** 标签 + 证据 + 修复建议。
+
+### 🔴 P0（金融语义错误 / 计算逻辑漏洞 · 必须修）
+
+#### P0-A [UPGRADED · 比首轮判断更严重] 子策略 candidate 选择存在 look-ahead bias，且前端"训练区间"措辞误导
+- **位置**：
+  - 后端：`stock_trade_demo/strategies/original_ensemble.py:139` `profile_end_date='2026-03-31'`（硬编码默认）
+  - 后端：`original_ensemble.py:632-637` `_resolve_profile_end_date()`；`:683-692` `_slice_training_window()`
+  - 前端：`web/templates/index.html:1654` "训练区间" 字面
+- **证据**：
+  - 今天日期 `2026-05-23`，验证窗口 `2025-11-28 → 2026-05-15 (7 个月)`
+  - 但 candidate 选择窗口 `train_end = 2026-03-31` 是硬编码默认，**验证窗口的 11/28 → 03/31 共 4 个月** 进入了 candidate 训练集
+  - `_select_best_profile` 通过对每个 candidate 在 train 窗口上 `select_and_backtest` 取最高 score 来选 → 验证窗口被部分用作 training。
+- **影响**：首页"近端验证 7 月 · 年化 37.3%" 在统计上是 in-sample，不是 OOS。
+- **修复**：
+  1. `profile_end_date` 默认改为"今天 - 验证窗口长度"，或在每次请求时动态设为"验证窗口起始日 - 1 天"；
+  2. 前端"训练区间"改为"候选 profile 离线筛选区间"，并在卡片上加灰色 chip "已确保不与验证窗口重叠"；
+  3. 加一行 assertion：若 `profile_end_date >= validation_start_date`，直接报警。
+
+#### P0-B [CONFIRMED] toggle 字段渲染原始值 `false` / `staged`
+- **位置**：`web/templates/timing.html:835-845` `timing_select` 分支
+- **证据**：line 844 `<span class="slider-val">${p.default}${p.unit || ''}</span>` —— 把 select.default 的原始值（boolean / string）直接 textContent。
+- **影响**：5 张 ETF 卡的"盈利锁定"显示 `false`、"仓位模式"显示 `staged`，非工程用户难懂；UI 缺乏专业感。
+- **修复**：把 `slider-val` 在 `timing_select` 类型下改为显示 `options.find(o => o.value == p.default).label`；并保留中文 label（`关闭/开启`、`满进满出/分档加减仓`）。
+
+#### P0-C [REFUTED] 纳指/标普 ETF 代码写反
+- **首轮判断错误**：经核实 `index_data.py:96-110` 与 `us_timing.html:175` 都是 `159941=纳指（深市）/ 513500=标普（沪市）`，**前后端完全一致**。
+- **结论**：撤回 P0，不存在该问题。
+
+---
+
+### 🟡 P1（金融常识细节 / 易误解 · 建议本轮修）
+
+#### P1-A [REVISED] 过户费规则可能 outdated（深市 ETF 实际也收）
+- **位置**：`stock_trade_demo/timing/backtest.py:153` `transfer_active = transfer_fee_rate if market_code == 'SH' else 0.0`
+- **证据**：深交所 2025 起已统一对深市 ETF 收 0.001‰ 过户费（与沪市一致）。后端代码仅对 SH 收，深市 ETF（159205 创业板、159941 纳指）按 0 处理 —— 漏算费用。
+- **影响**：深市 ETF 卡的"累计费用"低估 ~0.002% × 交易额 × 双边；与真实账户对账会有小差。
+- **修复**：去掉 `if market_code == 'SH'` 分支，对所有 ETF 都收 `transfer_fee_rate`；同时前端 base.py:86 描述改为"沪深两市 ETF 现行均收（双边）"。
+
+#### P1-B [CONFIRMED] 上行/下行捕获、Beta、Alpha、IR、R² 缺 tooltip
+- **位置**：`web/templates/index.html:1332-1349` metric-mini 卡渲染
+- **证据**：cards.push 列表里只放 label/value，下方 innerHTML 没加 `title=""` 属性。
+- **影响**：下行捕获 -47.9% 易被误读为"亏 47.9%"。
+- **修复**：把 cards.push 改成 `{ label, value, tooltip }`，innerHTML 加 `title="${c.tooltip}"`，并补全 6 个指标的解释文案（参考 Calmar 已有样式）。
+
+#### P1-C [CONFIRMED] 策略原理卡显示 LaTeX 源码 `\land \lor \le`
+- **位置**：`stock_trade_demo/timing/strategies.py:92,97,102,...` formula expression 字段；`web/templates/timing.html:818` `<div class="formula-expr">${b.expression}</div>` 直接 innerHTML
+- **影响**：5 张策略卡都显示反斜杠序列，非 LaTeX 用户无法理解。
+- **修复**（任选其一）：
+  - 简单：把 strategies.py 里所有 `\land`→`∧`、`\lor`→`∨`、`\le`→`≤`、`\ge`→`≥`、`\theta`→`θ` 直接替换；
+  - 完整：接入 KaTeX，把 `$...$` 内文本渲染为公式。
+  - 推荐前者，零运行时成本。
+
+#### P1-D [CONFIRMED] 美股页副标题"与 A 股市场独立运行" 严重误导
+- **位置**：`web/templates/us_timing.html:175` 副标题
+- **证据**：159941 / 513500 都是 A 股深沪市场上市的跨境 ETF（QDII），结算/手续费/T+0/限价均按 A 股市场规则。
+- **影响**：用户可能以为这是直接交易美股，对实际可执行性产生误判。
+- **修复**：把副标题改为"跨境 ETF 择时 · 标的为 A 股上市的 QDII ETF（纳指 159941 / 标普 513500）·  T+0 回转交易"。
+
+#### P1-E [CONFIRMED] 标普 ETF 策略 12 年年化仅 3.31%，跑输基准但前端未点出
+- **位置**：`/us_timing` 标普卡指标条
+- **证据**：年化 3.31% / 最大回撤 -22.49% / 累积 1.4948（12 年）—— 显著弱于买入持有标普 ETF 同期收益。
+- **影响**：用户看到 49.48% 区间收益和绿色"持有"信号会以为策略 OK，但实际上是负 alpha。
+- **修复**：每张 ETF 卡增加两个对照指标 "基准（持有该 ETF）累计收益 / 超额收益"。
+
+#### P1-F [CONFIRMED] 月度胜率在小样本窗口失去统计意义但展示规格相同
+- **位置**：`web_app.py:1622` win_rate 计算；`index.html:1320` 渲染
+- **证据**：近端 7 月窗口 win_rate = 42.9% → n=3/7，binomial SE ≈ 18.7%，与 50% 不显著区分。
+- **修复**：当 months < 12 时加灰色 chip "样本过小"，hover 显示二项标准误。
+
+---
+
+### 🟢 P2（文案 / 视觉 / 易读性 · 闲时修）
+
+| # | 项 | 状态 | 简要 |
+|---|---|---|---|
+| P2-A | 首页"近一月收益 0.5%" 一位小数 | [CONFIRMED] | 改 toFixed(2) → `0.50%` |
+| P2-B | warm-up 起点 = ETF 上市日的文案不够清晰 | [REVISED, was P0 #4] | 不是 bug，仅文案不清。建议改为"warm-up 起点 = ETF 真实上市日（不可更早）"，撤回首轮 P0 标签 |
+| P2-C | 杠杆 1.4 倍 / 100% 截断文字矛盾 | [PARTIAL CONFIRMED] | 后端 `strategies.py:787-788` 真的 clip 到 1.4；但 ETF 持仓现金约束下游可能再裁。文案建议改"ContScore 极强时仓位上限 1.4 倍，实际成交按账户现金硬约束封顶 100%" |
+| P2-D | 0.0001 vs 万 1.0 单位混用 | [CONFIRMED] | timing 页统一改"万 X / 万 X.X"格式 |
+| P2-E | 评分 4.06 无量纲说明 | [CONFIRMED] | 加 hover："离线网格搜索按 score = f(Calmar, recent_score) 排序" |
+| P2-F | CSI1000 卡空仓字段分组不自然 | [CONFIRMED] | 分组：账户/持仓/标的报价 |
+| P2-G | 对照基准选择缺金融含义说明 | [CONFIRMED] | 加 hover "用于计算 Beta/Alpha/上行下行捕获" |
+| P2-H | "成长短持有天数 / 保留只数" 默认关闭但视觉同级 | [CONFIRMED] | 加 `[实验]` 灰色 chip 或折叠 |
+| P2-I | 首页"总收益率 61214.1%" 缺时间窗注 | [CONFIRMED] | 顶部四宫格加副标题 "2008-01-31 → 2026-05-15 · 214 月" |
+| P2-J | 货币单位（元 / RMB / USD）未标注 | [CONFIRMED] | 跨境 ETF 实际以 RMB 计价（QDII），加单位 chip |
+| P2-K | 跨境 ETF 卡"涨跌停顺延 5 日"参数显示但 backend 不用 | [CONFIRMED] | backend `backtest.py:253` 正确跳过；前端建议在 limit_pct=None 时把该 slider 灰显并标注 "无涨跌停限制" |
+
+---
+
+### 撤回与修正一览
+
+| 首轮编号 | 首轮判断 | double-check 结论 |
+|---|---|---|
+| #3 | P0 · ETF 代码写反 | **REFUTED** · 前后端均正确 |
+| #4 | P0 · warm-up 起点 2015-07-13 过长 | **REFUTED** · 这是 ETF 真实上市日，符合 Rule 11/13。降为 P2-B 文案 |
+| #1 | P0 · 训练区间措辞 + 可能 look-ahead | **UPGRADED** · 已确认硬编码 `2026-03-31` 与验证窗口重叠 4 个月，是真实 look-ahead bias |
+| #7 | P0 · 印花税/过户费文案 | 文案 → P1-A · 后端 `if market == 'SH'` 规则可能 outdated（深市 ETF 实际也收过户费） |
+
+---
+
+### 最终建议修复顺序
+
+1. **P0-A look-ahead bias** — 这是唯一一条会影响"策略有效性结论"的金融逻辑漏洞，必须先修。修完后首页"近端验证 37.3% 年化" 需要重新评估。
+2. **P0-B toggle 字面值渲染** — 单点 UI 修复，1 处代码。
+3. **P1-A 深市 ETF 过户费 + P1-D 美股页副标题** — 金融常识纠正，2 处。
+4. **P1-B tooltip + P1-C LaTeX 替换 + P1-E 基准对比 + P1-F 小样本警告** — 易读性 + 易误解，建议本轮一起。
+5. **P2-*** — 闲时统一刷一遍。
+
+---
+
+### 验证方案（每个 P0/P1 修完后）
+
+- **P0-A**：跑一次 `/api/backtest?strategy=original_ensemble&start_date=2025-11-28&end_date=2026-05-15`，确认返回里 `profile_summary[*].window_end` 都 < `2025-11-28`；前端 "训练区间" 字段应同步变化。
+- **P0-B**：刷新 `/timing`，3 张 ETF 卡的"盈利锁定"应显示"关闭"，"仓位模式"应显示"分档加减仓"。
+- **P1-A**：API 返回 `transfer_fee_rate` 不再为 0；明细里深市 ETF 出现 `过户费 > 0`。
+- **P1-D**：us_timing 页副标题不再含"独立运行"。
+- 全部修完后跑 `frontend-screenshot-verify` 技能，4 张截图归档。
+
+
+---
+
+## 第十一章：最终修复报告（2026-05-23）
+
+### 一、修复方式
+
+成立 6 人并行专家小组（按文件分区，零冲突），全部基于第十章的 P0 + P1 清单：
+
+| Worker | 责任文件 | 任务 |
+| --- | --- | --- |
+| **A** | `web/templates/index.html` | P0-A 文案 + P1-B tooltip + P1-F 小样本警告 + 百分比小数位统一 |
+| **B** | `web/templates/timing.html` | P0-B `toggle defaultLabel` + `updateSlider` SELECT 支持 |
+| **C** | `web/templates/us_timing.html` | P0-B 同步 + P1-D 副标题改写 |
+| **D** | `strategies/original_ensemble.py` | **P0-A** look-ahead 真正根因：`profile_end_date` 改为动态 |
+| **E** | `timing/backtest.py` + `timing/base.py` | P1-A 深市过户费 + 文案修正 |
+| **F** | `timing/strategies.py` | P1-C LaTeX → Unicode（9 处） |
+
+完成后由我做交叉验证：grep 残留、Python import、Selenium DOM dump 三层复核。
+
+### 二、修复明细 & 验证证据
+
+#### P0-A：look-ahead bias（最严重，影响策略有效性结论）
+
+- **根因**：`stock_trade_demo/strategies/original_ensemble.py:139` 写死 `profile_end_date='2026-03-31'`，候选库筛选区间一直跨进近端验证窗口。
+- **修复**：默认值改 `None`；新增 `_resolve_profile_end_date(self, df)` 在为 `None` 时返回 `df['交易日期'].max() - pd.DateOffset(months=13)`，保证候选筛选区间永远落后于"近一年"窗口至少 1 个月。
+- **缓存失效**：`web_app.py:76` `_CACHE_VERSION = 9 → 10`，强制 `.cache/web_cache.pkl` 重建。
+- **验证（端到端 DOM dump 实测）**：
+  - 修复前：3 个子策略候选窗口都 `→ 2026-03-31`，与验证窗口 2025-11-28→2026-05-15 **重叠 4 个月**。
+  - 修复后：候选窗口分别 `→ 2025-04-15`（近3年/近5年/全量统一），验证窗口起点 2025-11-24，**相隔 ≥7 个月，已无交集**。
+  - 三个 sub-strategy 重新选出的最优 profile 分别是 `recent_tilt / baseline / high_beta_expansion`（旧值含未来信息，已废）。
+
+#### P0-B：toggle 默认值字面渲染 `false`
+
+- **Worker B/C 改 template**：在 `timing.html:836` 与 `us_timing.html:742` 引入 `defaultOpt = options.find(o => String(o.value) === String(p.default))`，渲染 `defaultOpt.label`；`updateSlider` 支持 `SELECT`。
+- **补充根因修复**：`timing/base.py:73-74` 把 `profit_lock_enabled` 的 option 标签由 `'off' / 'on'` 改成 `'关闭' / '开启'`（worker 改完后 Selenium 仍看到 `off / on`，说明源头数据就是英文）。
+- **验证**：DOM dump
+  - "关闭" 出现 **6 次**（CSI1000 / Star50 / ChinExt 三张卡 × 当前值/默认值）；"开启" 出现 **3 次**（备选项）；不再有 `false` / `off`。
+
+#### P1-A：深市 ETF 过户费
+
+- `timing/backtest.py:153-154`：删除 `if market_code == 'SH' else 0.0`，`transfer_active = transfer_fee_rate` 沪深统一收取（2025 起深交所对深市 ETF 也按 0.001‰ 双边）。
+- `timing/base.py:85-86`：参数描述同步改写"沪深两市 ETF 现行均收过户费 0.001‰…"。
+- **验证**：API `/api/timing/backtest` 返回 trade_details 中 159205（创业板 ETF）行的 `transfer > 0`，与 510980（沪市）同量级。
+
+#### P1-C：LaTeX 源串泄漏
+
+- `timing/strategies.py` 9 处替换：`\land → ∧` (×4)，`\lor → ∨` (×2)，`\le → ≤` (×2)，`\theta → θ` (×1)。
+- **验证**：DOM dump 中 `∧ ∨ ≤ θ` 均 ✓；`grep -nP "\\\\(land|lor|le|theta)"` 返回 0 行。
+
+#### P1-D：美股页副标题误导
+
+- `us_timing.html:175` 副标题改写为：`纳指ETF [159941] · 标普500ETF [513500] | 通过 A 股上市跨境 QDII ETF 复制美股指数，按 A 股交易规则结算（T+0 回转、无涨跌停）`。
+- **验证**：DOM dump 中 `QDII` ✓、`T+0` ✓、`跨境` ✓；"独立运行" 消失。
+
+#### P1-B：mini 指标 tooltip
+
+- `index.html:1341-1346` 给 6 个 metric-mini 卡（Beta / Alpha / IR / R² / 上行捕获 / 下行捕获）补 `tooltip`；innerHTML 模板加 `title="${c.tooltip || ''}"`。
+- **验证**：DOM 中各卡 `title` 属性存在；hover 悬浮提示生效。
+
+#### P1-F：小样本月度胜率警告
+
+- `index.html:1316-1320` 增加 `monthsCount < 12` 判定，label 渲染为 `月度胜率 ⚠`。
+- **验证**：DOM dump 中 `月度胜率 ⚠` 出现（近端 6 个月窗口、样本 6 月，触发 ⚠）。
+
+#### P0-A 文案 & 解释
+
+- `index.html:1661` "训练区间" → "候选筛选区间"；`1649` 新增灰字说明"候选筛选区间不会与近端验证窗口重叠（避免 look-ahead）"。
+- **验证**：DOM dump 中 `候选筛选区间` ✓；"训练区间" **0** 处残留。
+
+### 三、交叉验证清单
+
+| 项 | 验证手段 | 结果 |
+| --- | --- | --- |
+| `profile_end_date` 默认值 | Python `from … import OriginalEnsembleStrategy; print(s().profile_end_date)` | `None` ✓ |
+| 缓存版本 | `grep _CACHE_VERSION web_app.py` | `= 10` ✓ |
+| LaTeX 残留 | `grep -P "\\\\(land\|lor\|le\|theta)" timing/strategies.py` | 0 行 ✓ |
+| 深市 ETF 过户费分支 | `grep "market_code == 'SH'" timing/backtest.py` | 0 行 ✓ |
+| 服务进程 | `lsof -nP -iTCP:8080 -sTCP:LISTEN` | PID 21170 (Anaconda Python) ✓ |
+| 候选窗口 vs 验证窗口 | Selenium DOM dump | 间隔 ≥7 个月，无 look-ahead ✓ |
+| toggle 默认值 | Selenium DOM dump | "关闭"×6, "开启"×3 ✓ |
+| 公式 Unicode 渲染 | Selenium DOM dump | `∧ ∨ ≤ θ` 全部 ✓ |
+| 美股页副标题 | Selenium DOM dump | `QDII` ✓ `T+0` ✓ `跨境` ✓ |
+| 月度胜率小样本警告 | Selenium DOM dump | `月度胜率 ⚠` ✓ |
+
+截图归档于 `/tmp/quant_verify/post_fix/`（21 张 PNG + report.json）；修复前基准在 `/tmp/quant_verify/review/`，可一对一 diff。
+
+### 四、本轮未做（P2 backlog）
+
+| 项 | 说明 |
+| --- | --- |
+| P2-1 | "近端 1m 收益 0.5%、年化 / 回撤未必有意义" 的统一小样本兜底 |
+| P2-2 | `STRATEGY_CHANGELOG.md` 与第十章修订条目对账（用户后续若要保留历史结论需手动二次校对） |
+| P2-3 | `MacroV32` expanding-window z-score 的严格 OOS 重跑（第三章 4.1 项） |
+| P2-4 | `CSI1000 / Star50` 参数 walk-forward 敏感性报告（第三章 4.2 项） |
+
+### 五、后续影响提示
+
+- **首页"近端验证"指标会变**：旧的"37.3% 年化"是 look-ahead 污染后的乐观值；本次缓存重建后该数字应回落，请以新数字为准。
+- **timing 页参数已可真正调参**：之前 5 个 `profit_lock_*` 被 API 丢弃的 bug（trade_problem.md 第一章 Bug 2）在本轮一并落实生效，前端调参开关 → 后端策略实例化全链路打通。
+- **再次重启服务**：必须用 `/Users/fatcat/opt/anaconda3/bin/python web_app.py`（CLAUDE.md 锁定的 Anaconda 环境）；切其他解释器会缺包。
+
+## 第十二章：Phase 1 完成报告（2026-05-23 · 训练 cutoff + cold-start 重算 + 前端区分）
+
+承接用户 7 步方法学要求：(1) 锁定训练截止时间、(2) 截止之前完成拟合、(3) 截止之后留作 holdout、…(7) 验证集收益最大化。Phase 1 解决的是“拟合期与验证期之间的边界纪律”问题——只有先把 cutoff 与窗口资金重算钉死，Phase 2 的 walk-forward 才有意义。
+
+### 12.1 决策固定
+
+- 训练 cutoff：**`2025-11-30`**（用户拍板，对应当时已观察到的最后一个完整月）。
+- Holdout：`2025-12-01` 起至今，**严格只读**——不允许任何选优/调参动作回望该区间。
+- 验证窗口（训练区内部）：近 6m = `2025-06-01 → cutoff`、近 1y = `2024-12-01 → cutoff`；任何窗口内的指标都必须做 cold-start 资金重算（CLAUDE.md Rule 13）。
+
+### 12.2 落实位置
+
+| 改动 | 位置 | 作用 |
+|------|------|------|
+| `TRAINING_CUTOFF` 常量 | `scripts/walk_forward_train.py:56`、`scripts/build_holdout_reports.py:47`、`web_app.py` 选优区元数据 | 全链路单一来源，避免不同模块各自硬编码不同 cutoff |
+| Window cold-start 重算 | `timing/backtest.py::filter_timing_result` + `_cold_start_window_replay` | 进入任一可视化区间时，资金从 `initial_capital` 重置；信号路径仍来自完整历史 |
+| `evaluate_timing_result(reset_capital=True)` | `timing/backtest.py` | 让窗口指标基于该窗口独立资金路径计算，而不是套用全量净值差 |
+| 前端区分训练区/Holdout | `web/templates/timing.html`、`us_timing.html`（Phase 1-C，已合并） | 用户在浏览器即可一眼看到“这是训练区还是 holdout 区”，禁止在 holdout 区做参数调整 |
+
+### 12.3 验证要点（已通过）
+
+- `/api/timing/backtest` 返回的 `interval_windows.recent_6m / recent_1y` 与 `walk_forward_train.py` 当场跑的窗口指标一致（差值在 0.01 量级，仅来自浮点累积顺序）。
+- 区间起点早于 ETF 上市日时，`filter_timing_result` 返回非可交易状态而不是从 panel 全量最早日伪造历史（CLAUDE.md Rule 11）。
+- timing.html 上切换区间时，首张可视化交易必为买入（不会出现从 sell 开头的 cold-start 错位）。
+
+### 12.4 Phase 1 残留 / 限制
+
+- `web_app.py::_BEST_PROFILE_CACHE` 是进程内缓存——更新 best_profile JSON 后需重启 web 才能生效；这是 Rule 12“离线算完、web 只读”的代价，但操作上需要团队成员显式知道这一点。
+- 训练 cutoff 是手动常量；如要前推 cutoff（例如锁到 `2026-02-28`），需要同时改 `walk_forward_train.py` + `build_holdout_reports.py` + 一切引用 `TRAINING_CUTOFF` 的地方，并重新跑离线 pipeline。Phase 3 可以考虑把 cutoff 写进 `strategy/config.yaml` 之类的单文件配置，但本期未做。
+
+## 第十三章：Phase 2 完成报告（2026-05-23 · 离线 walk-forward + best_profile 接入 + 前端只读卡片）
+
+Phase 2 解决的是 7 步方法学中第 (2)~(6) 步：在 cutoff 之前做有据可查的参数搜索，把胜出参数写盘，让 web 只读这份产物，并用 holdout 报告做独立的“事后体检”。
+
+### 13.1 离线 pipeline（`scripts/walk_forward_train.py`）
+
+- **5 个策略 × 207 组合**（csi1000=36, star50=36, chinext=81, nasdaq=27, sp500=27）。
+- **评分公式**：`score = 0.6 * Calmar(recent_6m) + 0.4 * Calmar(recent_1y)`（用户在 Phase 2 立项时确认的权重）。
+- **风险熔断**：任一窗口 `|maxDD| > 0.20` ⇒ `score = -inf`，该组合直接出局。
+- **数据隔离**：策略实例 `run(panel_pre_cutoff)`，panel 在 `_slice_panel_pre_cutoff` 已截到 `≤ cutoff`；窗口指标再用 `filter_timing_result(start, end=cutoff)` 触发 cold-start 重算——杜绝任何指标在窗口之外取数据。
+- **审计**：每个策略写 `strategy/best_profile_{sid}.json`（含 `tuned_params/all_params/window_metrics/score_formula/maxdd_threshold/grid_size`）与 `strategy/walk_forward_log_{sid}.csv`（全网格、按 score 倒序，便于回看“第二、第三梯度的参数长什么样”）。
+
+### 13.2 选出的最优参数（训练区）
+
+| 策略 | grid | 调参 | 综合分 | 6m Calmar | 1y Calmar |
+|------|------|------|--------|-----------|-----------|
+| csi1000_timing | 36 | breakout=20, exit=5, trend=80 | 7.724 | 10.42 | 3.68 |
+| star50_timing | 36 | breakout=8, exit=3, trend=60 | 10.670 | 10.67 | 10.67 |
+| chinext_timing | 81 | mom_short=10, mom_long=60, trend=60, mom_thr=0.0 | 10.700 | 10.70 | 10.70 |
+| nasdaq_timing | 27 | fast=20, slow=150, mom=150 | 4.984 | 6.64 | 2.50 |
+| sp500_timing | 27 | fast=30, slow=100, mom=80 | 3.620 | 5.62 | 0.62 |
+
+提示：chinext 选出的 `momentum_threshold=0.0` 比出厂默认 `0.02` 更宽松；这是网格的真实选择，不是 bug。1y Calmar 几乎等于 6m Calmar 的策略，意味着 1y 区间的多数收益都集中在最近半年——是“被近端样本拖动”的信号，holdout 报告会进一步判定它是否过拟合。
+
+### 13.3 Holdout 报告（`scripts/build_holdout_reports.py` → `strategy/holdout_report_*.md`）
+
+Holdout 区间：`2025-12-01 → 2026-05-23`，112 bars。Holdout 报告**纯展示**，不参与选优、不可回写。
+
+| 策略 | 累积净值 | 年化 | 最大回撤 | Holdout Calmar | 平均仓位 | 调仓次数 | 训练区 1y Calmar | Holdout vs 训练 |
+|------|---------|------|----------|----------------|----------|----------|------------------|-----------------|
+| csi1000_timing | 1.0226 | +4.89% | -3.04% | 1.61 | 37.3% | 25 | 3.68 | 偏弱但同号，OOS 稳定 |
+| star50_timing | 1.3085 | +77.53% | -4.06% | **19.11** | 32.8% | 10 | 10.67 | OOS 远好于训练，需警惕 lucky run |
+| chinext_timing | 1.0482 | +10.58% | -4.89% | 2.16 | 29.9% | 27 | 10.70 | 训练区被近端拉高，OOS 回到合理量级 |
+| nasdaq_timing | 0.9991 | -0.19% | -5.03% | -0.04 | 18.5% | 22 | 2.50 | 训练区有 Calmar，OOS 几乎 0 |
+| sp500_timing | 0.9574 | -8.87% | -5.18% | **-1.71** | 20.1% | 24 | 0.62 | 训练区已弱，OOS 直接转负 |
+
+诚实结论：
+- **sp500_timing OOS 转负是真实失败**——这是“walk-forward 选出的参数”在 holdout 上的判决。**不应**继续在 holdout 上再调一轮，否则就是 selection leakage。
+- **star50_timing OOS 19.1 Calmar** 看起来太好，需要把它当“候选幸运样本”而不是“稳定 alpha”，待下一段 holdout 累积更多 bar 再判定。
+- **chinext OOS 回落到 2.16** 是健康的——训练区 10.7 那种数字本来就不该相信，holdout 把它打回原形说明选优纪律没坏。
+
+### 13.4 Web 接入（`stock_trade_demo/web_app.py`）
+
+- `_BEST_PROFILE_DIR = ../strategy/`、`_BEST_PROFILE_CACHE` 进程内缓存。
+- 新增 `_load_best_profile(strategy_name)`、`get_best_profile_view(strategy_name)`。
+- `build_timing_strategy` / `build_us_timing_strategy` 的参数合并顺序：
+  1. `_get_timing_default_params(strategy_name)`（出厂默认）
+  2. `best_profile['all_params']`（walk-forward 选出的覆盖层）
+  3. `params`（前端 request 传入的；本期只用于辅助参数，调参字段已被 best_profile 锁定）
+- `/api/timing/params` 与 `/api/us_timing/params` 的响应 payload 多了 `best_profile` 字段。
+- `_CACHE_VERSION = 12`（Phase 2 接入信号；用户后续如更新 best_profile，请同步递增）。
+
+### 13.5 前端只读卡片（`web/templates/timing.html` + `us_timing.html`）
+
+- 在每个策略的"参数调整"区域上方新增"当前生效 profile（只读，来自 walk-forward）"卡片，结构：
+  - 训练 cutoff / 生成时间
+  - 评分公式、综合分、maxDD 阈值
+  - "网格选出的调参"表（`tuned_params`）
+  - "训练区窗口表现"表（近 6m / 近 1y 的 Calmar / 年化 / 最大回撤 / 平均仓位）
+  - 灰字脚注指向 `strategy/holdout_report_{sid}.md`
+- 调参滑块本身仍可滑动，但 best_profile 的 `all_params` 已经覆盖了出厂默认；用户主动改滑块的覆盖关系在第 13.4 节合并顺序里说明。
+- 验证：`/tmp/quant_verify/best_profile_csi1000_timing.png`、`/tmp/quant_verify/best_profile_sp500_timing.png`、`/tmp/quant_verify/timing_full.png`、`/tmp/quant_verify/us_timing_full.png` 已截图存档。
+
+### 13.6 Phase 2 残留 / 后续
+
+- **MacroV32 仍未纳入 walk-forward**——它的 8 因子 z-score 用全样本统计量，本身就含 look-ahead；先在 Phase 3 做 expanding-window z-score 重构，再决定是否进 grid。这是 trade_problem.md 第四章 4.1 条的延伸。
+- **chinext 的 `momentum_threshold=0.0`** 选出后，应在 Phase 3 做一次 ±20% 网格扰动，看 OOS 是否对该值过敏；这是第四章 4.2 项的具象化。
+- **sp500_timing 的 holdout 转负**是 Phase 2 真实暴露出来的问题，不属于"工程 bug"，而是该策略在当前结构下能力不足；如要修复，方向是引入额外 regime feature（VIX、yield curve），不再是调窗口大小。
+- **下一次重跑 walk-forward**：建议等 holdout 至少累积到 6 个月（≈ `2026-06-01`），再把 cutoff 推到 `2026-05-30`，重新生成 best_profile；同时把当前这一版 best_profile 归档到 `strategy/_history/`，便于做参数稳定性分析。
+
+### 13.7 修正后记（2026-05-23）— 评分公式升级 + 全历史不退步硬约束
+
+**触发**：第一版 Phase 2 上线后，用户反馈"收益率下降的比较多"。诊断脚本 `/tmp/quant_verify/compare_defaults_vs_bestprofile.py` 把 5 个策略的"出厂 tuned vs best_profile tuned"在 full / recent_1y / recent_6m 三个窗口上并排打印，发现：
+
+- csi1000_timing 全历史 final_nav 从 1.1167 → 1.0245（-9.22%）、年化 4.57% → 0.98%
+- chinext_timing 全历史 -4.1%、star50_timing -2.3%
+- 仅 sp500_timing 微涨 +6%、nasdaq_timing 微涨 +0.7%
+
+**根因**：上一版评分公式是 `score = 0.6*Calmar(recent_6m) + 0.4*Calmar(recent_1y)`，只看近 6m/1y，**完全没看全历史**。短窗口 Calmar 容易被一两段顺风行情冲高，被 grid search 选中的窗口在长尺度上反而牺牲了趋势捕捉能力——典型的"窄窗口过拟合"。
+
+**修复**（已落到 `scripts/walk_forward_train.py`）：
+
+1. 评分升级为三窗口加权：
+
+   ```
+   score = 0.4*Calmar(recent_6m) + 0.3*Calmar(recent_1y) + 0.3*Calmar(full_pre_cutoff)
+   ```
+
+   把"训练区间内的全历史 Calmar"显式纳入 30% 权重，防止短窗口拟合牺牲长期趋势。
+
+2. 加入"训练区间全历史不退步"硬约束：
+
+   ```
+   候选必须满足 best.full_pre_cutoff.final_nav >= FULL_NAV_FLOOR_RATIO * default.full_pre_cutoff.final_nav
+   ```
+
+   - `FULL_NAV_FLOOR_RATIO` 第一次定为 0.97（容忍 3% 内的退步换其他指标改善），后按用户要求 **收紧到 1.00**（任何候选必须在训练区间全历史上 ≥ default）。
+   - default 取 `DEFAULT_TUNED`，与 `timing/strategies.py` 各策略类 `__init__` 默认值严格一致。
+   - 注意：floor **只校验 pre_cutoff 数据**，不引入 holdout 任何信息，符合 walk-forward 与 CLAUDE.md Rule 13。
+
+3. Fallback-to-default 安全网：若网格内**没有**任何候选满足 floor，则把 `tuned_params` 直接写为 `DEFAULT_TUNED[strategy_id]`，并在 best_profile JSON 中标记 `"fallback_to_default": true`。`build_timing_strategy / build_us_timing_strategy` 的合并顺序"默认 → best_profile.all_params → 用户覆盖"对 fallback 状态天然兼容——它等价于不做任何调参。
+
+4. `best_profile_*.json` 新增字段：
+   - `score_formula`：把公式 + floor 比例字符串化写入，便于事后审计。
+   - `default_full_nav`：当时 default 的 pre_cutoff full_nav，作为 floor 的 reference。
+   - `full_nav_floor_ratio`：本次跑的 floor 比例。
+   - `fallback_to_default`：true 表示 best 实际 = default。
+   - `window_metrics.full_pre_cutoff`：cutoff 之前全历史的 Calmar/最大回撤/年化等。
+
+**修复后验证（floor=1.00 版本）**：
+
+| 策略 | pre_cutoff default→best final_nav | pre_cutoff default→best mdd | fallback |
+|---|---|---|---|
+| csi1000_timing | 1.0504 → **1.1332** (+7.9%) | -13.42% → **-13.10%** | False |
+| star50_timing  | 1.1353 → **1.2107** (+6.6%) | -12.21% → **-8.40%** | False |
+| chinext_timing | 1.3361 → **1.3532** (+1.3%) | -10.05% → **-8.61%** | False |
+| nasdaq_timing  | 1.7541 ↔ 1.7541 | -24.53% 不变 | **True** |
+| sp500_timing   | 1.5412 → **1.6144** (+4.7%) | -22.49% → **-12.97%** | False |
+
+**最终选出的 best tuned_params**：
+
+| 策略 | best tuned_params |
+|---|---|
+| csi1000_timing | `breakout_window=10, exit_window=5, trend_window=50` |
+| star50_timing  | `breakout_window=8,  exit_window=3, trend_window=60` |
+| chinext_timing | `momentum_short_window=10, momentum_long_window=60, trend_window=60, momentum_threshold=0.0` |
+| nasdaq_timing  | `fast_window=20, slow_window=120, momentum_window=120`（= default, fallback=True） |
+| sp500_timing   | `fast_window=15, slow_window=100, momentum_window=80` |
+
+**Holdout 段（2025-12-01 以后，CLAUDE.md Rule 13 严格禁止 fit）**：
+
+| 策略 | holdout default→best final_nav | holdout default→best mdd |
+|---|---|---|
+| csi1000_timing | 1.0630 → 1.0339 (-2.7%) | -3.04% ↔ -3.03% |
+| star50_timing  | 1.4155 → 1.3085 (-7.6%) | -4.06% 不变 |
+| chinext_timing | 1.0927 → 1.0482 (-4.1%) | -4.89% 不变 |
+| nasdaq_timing  | 0.9991 ↔ 0.9991 | -5.03% 不变 |
+| sp500_timing   | 0.9520 → 0.9542 (+0.2%) | -5.32% → -4.93% |
+
+**结论**：
+
+- 训练区间（floor 真正控制的范围）5 个策略全部满足"不退步"硬约束；csi1000/star50/chinext/sp500 都是收益+回撤双向改善。
+- holdout 段 csi1000/star50/chinext 略低于 default，**但这是真实 OOS 表现，不允许反过来 fit**。任何把 holdout 纳入 score 的做法都会让 OOS 评估失去客观性。
+- nasdaq fallback 验证安全网工作正常：当 grid 内找不到 ≥ default 的候选时，best_profile 干净回退到出厂参数，行为与"不接入 best_profile"完全一致。
+- 若要让 holdout 也优于 default，唯一合规路径是**推迟 train cutoff**（例如挪到 2024-12-01）让现在的 holdout 进入训练区间，再用更早的数据做 walk-forward。这是结构性改动，列入 §13.6 后续。
+
+**前端表现**：`/timing` 与 `/us_timing` 页面的"当前生效 profile（只读，来自 walk-forward）"卡片自动读取新版 best_profile JSON，5 个策略的 tuned_params 与 6m / 1y / full_pre_cutoff 三窗口 Calmar/年化/回撤直接展示，无需手动改前端。
+
+**遗留约束**：
+
+- 当前实现下 `FULL_NAV_FLOOR_RATIO` 是脚本顶层常量，未做 CLI 参数；后续若要做 sensitivity test（如 floor=1.02 / 1.05 看落地率），需先把它改成 `argparse` 入参。
+- comparison 脚本 `/tmp/quant_verify/compare_defaults_vs_bestprofile.py` 是一次性诊断工具，不在 `scripts/` 中持久化；下一轮做 walk-forward 重跑时应固化为 `scripts/audit_best_profile_vs_default.py`。

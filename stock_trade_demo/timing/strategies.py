@@ -89,17 +89,17 @@ class CSI1000TimingStrategy(BaseTimingStrategy):
         return [
             {
                 'title': '突破入场',
-                'expression': 'buyBreakout_t = (close_t > breakoutHigh_t) \land (close_t > trendMA_t)',
+                'expression': 'buyBreakout_t = (close_t > breakoutHigh_t) ∧ (close_t > trendMA_t)',
                 'explanation': '价格重新突破过去 breakout_window 的高点，且仍位于趋势线上方时，允许开始建仓。',
             },
             {
                 'title': 'MACD 辅助入场',
-                'expression': 'macdCross_t = (MACD_t > Signal_t) \land (MACD_{t-1} \le Signal_{t-1}) \land (close_t > trendMA_t)',
+                'expression': 'macdCross_t = (MACD_t > Signal_t) ∧ (MACD_{t-1} ≤ Signal_{t-1}) ∧ (close_t > trendMA_t)',
                 'explanation': '即使尚未创出新高，只要 MACD 金叉且趋势未坏，也允许试探跟随反弹。',
             },
             {
                 'title': '退出条件',
-                'expression': 'sell_t = (close_t < exitLow_t) \lor (close_t < trendMA_t)',
+                'expression': 'sell_t = (close_t < exitLow_t) ∨ (close_t < trendMA_t)',
                 'explanation': '一旦跌破短期退出位或中期趋势线，状态机立即切回空仓，避免继续硬扛回撤。',
             },
             {
@@ -239,17 +239,17 @@ class Star50TimingStrategy(BaseTimingStrategy):
         return [
             {
                 'title': '突破入场',
-                'expression': 'buy_breakout_t = (close_t > breakoutHigh_t) \land (close_t > trendMA_t)',
+                'expression': 'buy_breakout_t = (close_t > breakoutHigh_t) ∧ (close_t > trendMA_t)',
                 'explanation': '价格向上突破过去 breakout_window 的高点，且仍位于趋势线上方。',
             },
             {
                 'title': 'MACD 辅助入场',
-                'expression': 'macdCross_t = (MACD_t > Signal_t) \land (MACD_{t-1} \le Signal_{t-1}) \land (close_t > trendMA_t)',
+                'expression': 'macdCross_t = (MACD_t > Signal_t) ∧ (MACD_{t-1} ≤ Signal_{t-1}) ∧ (close_t > trendMA_t)',
                 'explanation': '即使没有创突破新高，只要 MACD 金叉且趋势未坏，也允许入场。',
             },
             {
                 'title': '退出条件',
-                'expression': 'sell_t = (close_t < exitLow_t) \lor (close_t < trendMA_t)',
+                'expression': 'sell_t = (close_t < exitLow_t) ∨ (close_t < trendMA_t)',
                 'explanation': '跌破短期退出位或中期趋势线时，状态机从持仓切回空仓。',
             },
             {
@@ -391,7 +391,7 @@ class ChiNextTimingStrategy(BaseTimingStrategy):
         return [
             {
                 'title': '基础入场条件',
-                'expression': 'momShort_t > \theta,  momLong_t > 0,  close_t > trendMA_t',
+                'expression': 'momShort_t > θ,  momLong_t > 0,  close_t > trendMA_t',
                 'explanation': '短动量超过阈值、中动量为正且价格仍在趋势线上方时，认为创业板进入可做多区间。',
             },
             {

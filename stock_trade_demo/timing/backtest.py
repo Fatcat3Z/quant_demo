@@ -150,7 +150,8 @@ def _replay_timing_positions(result_df, initial_capital, buy_cost, sell_cost,
             return result
     settlement_mode = str(settlement or 'T+1').upper()
     market_code = str(market or 'SH').upper()
-    transfer_active = transfer_fee_rate if market_code == 'SH' else 0.0
+    # 2025 起深交所统一对深市 ETF 收过户费（0.001‰），沪深双市统一
+    transfer_active = transfer_fee_rate
     slippage_factor_buy = 1.0 + (slippage_bps / 1.0e4)
     slippage_factor_sell = 1.0 - (slippage_bps / 1.0e4)
     daily_interest = float(cash_interest_rate) / 252.0 if cash_interest_rate else 0.0
@@ -717,6 +718,40 @@ def evaluate_timing_result(result_df, benchmark_returns=None, reset_capital=Fals
     return metrics
 
 
+def _cold_start_window_replay(sliced_df, source_attrs):
+    """窗口起点冷启动重算：cash=initial_capital、units=0、NAV=1.0。
+
+    保留 sliced_df 的 target_exposure 信号路径（由全历史 warmup 算出），
+    但把 holding_value/cash_balance/equity_curve/drawdown/累积净值/各类 pnl
+    全部按"窗口内独立持仓"重新模拟。CLAUDE.md Rule 13 的最终落地形态。
+    """
+    if len(sliced_df) == 0:
+        return sliced_df
+    initial_capital = float(source_attrs.get('initial_capital', 50000))
+    # 先重算 prev_exposure / exposure_change / signal_action: 窗口起点 prev=0
+    # 否则 _replay_timing_positions 会以为 "之前就持有 X%" 而跳过首单。
+    sliced_df = _rebuild_timing_actions(sliced_df)
+    replayed = _replay_timing_positions(
+        sliced_df,
+        initial_capital=initial_capital,
+        buy_cost=source_attrs.get('buy_cost', 0.001),
+        sell_cost=source_attrs.get('sell_cost', 0.001),
+        settlement=source_attrs.get('settlement_mode', 'T+1'),
+        limit_pct=source_attrs.get('limit_pct', None),
+        market=source_attrs.get('market', 'SH'),
+        slippage_bps=source_attrs.get('slippage_bps', 0.0),
+        cash_interest_rate=source_attrs.get('cash_interest_rate', 0.0),
+        commission_rate=source_attrs.get('commission_rate', 0.0),
+        commission_min=source_attrs.get('commission_min', 0.0),
+        stamp_tax_rate=source_attrs.get('stamp_tax_rate', 0.0),
+        transfer_fee_rate=source_attrs.get('transfer_fee_rate', 0.0),
+        limit_max_delay_days=source_attrs.get('limit_max_delay_days', 5),
+    )
+    replayed.attrs['cold_start_window'] = True
+    replayed.attrs['cold_start_initial_capital'] = initial_capital
+    return replayed
+
+
 def filter_timing_result(result_df, start_date=None, end_date=None):
     result = result_df.copy()
     if start_date:
@@ -728,6 +763,17 @@ def filter_timing_result(result_df, start_date=None, end_date=None):
     # 否则会把全量回测起点泄漏到子区间。
     result = result.reset_index(drop=True)
     result.attrs.update(result_df.attrs)
+
+    # 窗口 cold-start：仅当指定 start_date 且切片严格小于源 df 时触发。
+    # （没指定 start_date 时认为是全历史展示，不重算）
+    if start_date is not None and len(result) > 0 and len(result) < len(result_df):
+        source_attrs = dict(result_df.attrs)
+        replayed = _cold_start_window_replay(result, source_attrs)
+        if len(replayed) > 0:
+            preserved_attrs = dict(result.attrs)
+            result = replayed
+            for k, v in preserved_attrs.items():
+                result.attrs.setdefault(k, v)
 
     if len(result) == 0:
         result.attrs['etf_inception_date'] = None
@@ -774,12 +820,24 @@ def _month_start_from_end(end_date, months):
     return start_ts.normalize()
 
 
-def summarize_timing_windows(result_df, benchmark_returns=None):
+def summarize_timing_windows(result_df, benchmark_returns=None, full_history_start=None):
+    """
+    full_history_start: 真实的策略预热起点（即 filter_timing_result 之前 result
+    的最早交易日）。当用户在前端选了一个区间时，result_df 已经被截断到该区间，
+    但策略本身是在更早的全历史上跑出来的——training_range 必须反映这段真实预热
+    历史，否则前端会显示"无更早历史"，与 CLAUDE.md Rule 13 的语义冲突。
+    """
     if len(result_df) == 0:
         return {}
 
     result = result_df.copy().reset_index(drop=True)
-    full_start = pd.to_datetime(result['交易日期'].min())
+    sliced_full_start = pd.to_datetime(result['交易日期'].min())
+    if full_history_start is not None:
+        full_start = pd.to_datetime(full_history_start)
+        if full_start > sliced_full_start:
+            full_start = sliced_full_start
+    else:
+        full_start = sliced_full_start
     full_end = pd.to_datetime(result['交易日期'].max())
     recent_6m_start = _month_start_from_end(full_end, INTERVAL_WINDOW_MONTHS['recent_6m'])
 

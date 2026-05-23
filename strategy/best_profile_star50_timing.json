@@ -1,0 +1,57 @@
+{
+  "strategy_id": "star50_timing",
+  "training_cutoff": "2025-11-30",
+  "generated_at": "2026-05-23T19:35:03",
+  "score_formula": "0.4*Calmar(6m) + 0.3*Calmar(1y) + 0.3*Calmar(full_pre_cutoff)  [floor: full_nav >= 1.00*default]",
+  "maxdd_threshold": 0.2,
+  "full_nav_floor_ratio": 1.0,
+  "default_full_nav": 1.1353,
+  "fallback_to_default": false,
+  "score": 10.67,
+  "tuned_params": {
+    "breakout_window": 8,
+    "exit_window": 3,
+    "trend_window": 60
+  },
+  "all_params": {
+    "exposure_mode": "staged",
+    "enter_threshold": 0.55,
+    "add_threshold": 0.75,
+    "trim_threshold": 0.35,
+    "exit_threshold": 0.15,
+    "confirm_days": 1,
+    "max_entry_exposure": 0.5,
+    "probe_entry_exposure": 0.25,
+    "probe_confirm_days": 1,
+    "breakout_window": 8,
+    "exit_window": 3,
+    "trend_window": 60
+  },
+  "window_metrics": {
+    "recent_6m": {
+      "final_nav": 1.2107,
+      "annual_return": 0.8970999999999999,
+      "max_drawdown": -0.084,
+      "calmar": 10.67,
+      "rebalance_count": 10,
+      "avg_exposure": 0.3514
+    },
+    "recent_1y": {
+      "final_nav": 1.2107,
+      "annual_return": 0.8970999999999999,
+      "max_drawdown": -0.084,
+      "calmar": 10.67,
+      "rebalance_count": 10,
+      "avg_exposure": 0.3514
+    },
+    "full_pre_cutoff": {
+      "final_nav": 1.2107,
+      "annual_return": 0.8970999999999999,
+      "max_drawdown": -0.084,
+      "calmar": 10.67,
+      "rebalance_count": 10,
+      "avg_exposure": 0.3514
+    }
+  },
+  "grid_size": 36
+}
