@@ -23,6 +23,9 @@ from visualization import plot_strategy_comparison, plot_raw_style
 warnings.filterwarnings('ignore')
 pd.set_option('expand_frame_repr', False)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SELECTION_REPORT_DIR = os.path.join(BASE_DIR, 'reports', 'selection')
+
 
 def parse_arg(flag, default='compare'):
     try:
@@ -56,7 +59,10 @@ def main():
         print(f"\n>>> [{name}]")
         df = strat.run(df_full.copy())
         result = select_and_backtest(df, strat)
-        result.to_csv(f'选股策略详情_{name}.csv', encoding='gbk', index=False)
+        os.makedirs(SELECTION_REPORT_DIR, exist_ok=True)
+        output_path = os.path.join(SELECTION_REPORT_DIR, f'选股策略详情_{name}.csv')
+        result.to_csv(output_path, encoding='gbk', index=False)
+        print(f"[选股详情已保存] → {output_path}")
         ev = strategy_evaluate(result)
         print(f"\n[{name} 评估]")
         print(ev.to_string())

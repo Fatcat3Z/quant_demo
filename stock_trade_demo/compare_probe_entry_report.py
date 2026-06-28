@@ -7,7 +7,8 @@ import web_app
 from timing import run_timing_backtest, evaluate_timing_result, summarize_timing_windows
 
 
-OUTPUT_PATH = Path(__file__).resolve().parent / 'probe_entry_report.md'
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_PATH = BASE_DIR / 'reports' / 'probes' / 'probe_entry_report.md'
 
 A_SHARE_CASES = [
     ('csi1000_timing', '中证1000ETF'),
@@ -180,6 +181,7 @@ def main():
     content.extend(render_table('美股策略对比', us_rows))
     content.extend(render_delta_notes('美股', us_reports))
 
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text('\n'.join(content), encoding='utf-8')
     print(OUTPUT_PATH)
 

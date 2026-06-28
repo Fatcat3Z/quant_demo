@@ -143,9 +143,11 @@ This is a script-first A-share quantitative stock-selection and backtesting proj
 
 ## Generated artifact policy
 Treat these as generated outputs unless the user explicitly wants to keep them:
-- `stock_trade_demo/选股策略详情*.csv`
-- `stock_trade_demo/选股对比图_*.png`
-- `stock_trade_demo/策略对比图表.png`
+- `stock_trade_demo/reports/selection/选股策略详情*.csv`（current default output for selection detail exports）
+- `stock_trade_demo/reports/plots/选股对比图_*.png`（current default output for raw-style comparison plots）
+- `stock_trade_demo/reports/plots/策略对比图表.png`（current default output for strategy comparison plots）
+- `stock_trade_demo/reports/probes/probe_entry_report.md`（probe report output; keep only when the report itself is worth preserving）
+- legacy root-level regenerated copies if scripts or old commands recreate them: `stock_trade_demo/选股策略详情*.csv`, `stock_trade_demo/选股对比图_*.png`, `stock_trade_demo/策略对比图表.png`, `stock_trade_demo/probe_entry_report.md`
 - `stock_trade_demo/选股比赛.png`
 - `stock_trade_demo/position_sizing_results.csv`
 - `stock_trade_demo/sell_side_results.csv`

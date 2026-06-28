@@ -27,6 +27,9 @@ from visualization import plot_strategy_comparison, plot_raw_style
 warnings.filterwarnings('ignore')
 pd.set_option('expand_frame_repr', False)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SELECTION_REPORT_DIR = os.path.join(BASE_DIR, 'reports', 'selection')
+
 
 def parse_arg(flag, default='compare'):
     """解析 --flag value 形式的命令行参数"""
@@ -54,7 +57,10 @@ def main():
 
     # 回测
     result = select_and_backtest(df, strategy)
-    result.to_csv('选股策略详情.csv', encoding='gbk', index=False)
+    os.makedirs(SELECTION_REPORT_DIR, exist_ok=True)
+    output_path = os.path.join(SELECTION_REPORT_DIR, '选股策略详情.csv')
+    result.to_csv(output_path, encoding='gbk', index=False)
+    print(f"\n[选股详情已保存] → {output_path}")
 
     # 评估
     ev = strategy_evaluate(result)

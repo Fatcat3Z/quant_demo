@@ -8,6 +8,7 @@ stock_data.csv
 *.parquet
 
 # 生成结果文件
+# 裸文件名规则会同时忽略 reports/selection 与 reports/plots 下的同名可再生产物；这是有意行为。
 选股策略详情*.csv
 选股对比图_*.png
 策略对比图表.png

@@ -98,7 +98,7 @@
 > | 1.1 | 缠论因子整合 + 策略实现 | [x] | quant_factor.md §17, choose_stock.py 缠论增强版, 策略对比 (3.42x vs 7.82x) |
 > | 1.2 | **Method A 日线流水线 + 策略迭代** | [x] | chan_monthly_factor_builder.py, choose_stock.py v2.0, STRATEGY_CHANGELOG.md |
 > | 2 | 数据补充 May 2026 | [x] | get_stock_info.py (1370行), stock_data.csv (703,177行) |
-> | 2.1 | 数据交叉验证 + 第三方库 | [x] | data_crosscheck_report.md (256行), akshare 1.18.60, tushare 1.4.29 |
+> | 2.1 | 数据交叉验证 + 第三方库 | [x] | reports/data/data_crosscheck_report.md (256行), akshare 1.18.60, tushare 1.4.29 |
 > | 3 | RL+LLM 选股调研 | [x] | rl_llm_stock_selection_research.md (249行) |
 > | 3.1 | RL+LLM 方案A 代码实现 | [x] | rl_stock_selector/ (11文件), PPO + GAE 完整实现 |
 > 

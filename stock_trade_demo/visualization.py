@@ -21,6 +21,9 @@ plt.rcParams['font.sans-serif'] = [
 ]
 plt.rcParams['axes.unicode_minus'] = False
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PLOTS_REPORT_DIR = os.path.join(BASE_DIR, 'reports', 'plots')
+
 
 def plot_strategy_comparison(strategies, eval_results, save_path=None):
     """
@@ -32,9 +35,8 @@ def plot_strategy_comparison(strategies, eval_results, save_path=None):
     底部附关键指标摘要表
     """
     if save_path is None:
-        save_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), '策略对比图表.png'
-        )
+        save_path = os.path.join(PLOTS_REPORT_DIR, '策略对比图表.png')
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     if not strategies:
         return
 
@@ -173,7 +175,8 @@ def plot_raw_style(strategies, eval_results=None, save_dir=None):
     每个策略生成一张独立图表。
     """
     if save_dir is None:
-        save_dir = os.path.dirname(os.path.abspath(__file__))
+        save_dir = PLOTS_REPORT_DIR
+    os.makedirs(save_dir, exist_ok=True)
 
     for name, s in strategies.items():
         fig, ax = plt.subplots(figsize=(12, 5))
